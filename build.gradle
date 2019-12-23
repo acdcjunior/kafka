@@ -26,7 +26,6 @@ buildscript {
     // For Apache Rat plugin to ignore non-Git files
     classpath "org.ajoberstar:grgit:1.9.3"
     classpath 'com.github.ben-manes:gradle-versions-plugin:0.17.0'
-    classpath 'org.scoverage:gradle-scoverage:2.1.0'
     classpath 'com.github.jengelman.gradle.plugins:shadow:2.0.2'
     classpath 'org.owasp:dependency-check-gradle:3.1.1'
   }
@@ -105,29 +104,7 @@ ext {
 
 apply from: file('wrapper.gradle')
 
-if (new File('.git').exists()) {
-  apply from: file('gradle/rat.gradle')
-  rat {
-    // Exclude everything under the directory that git should be ignoring via .gitignore or that isn't checked in. These
-    // restrict us only to files that are checked in or are staged.
-    def repo = Grgit.open(project.file('.'))
-    excludes = new ArrayList<String>(repo.clean(ignore: false, directories: true, dryRun: true))
-    // And some of the files that we have checked in should also be excluded from this check
-    excludes.addAll([
-        '**/.git/**',
-        '**/build/**',
-        'CONTRIBUTING.md',
-        'PULL_REQUEST_TEMPLATE.md',
-        'gradlew',
-        'gradlew.bat',
-        '**/README.md',
-        '**/id_rsa',
-        '**/id_rsa.pub',
-        'checkstyle/suppressions.xml',
-        'streams/quickstart/java/src/test/resources/projects/basic/goal.txt'
-    ])
-  }
-}
+
 
 subprojects {
   apply plugin: 'java'
@@ -139,9 +116,6 @@ subprojects {
   apply plugin: 'maven'
   apply plugin: 'signing'
   apply plugin: 'checkstyle'
-
-  if (!JavaVersion.current().isJava9Compatible())
-    apply plugin: 'findbugs'
 
   sourceCompatibility = 1.7
   targetCompatibility = 1.7
@@ -365,21 +339,6 @@ subprojects {
   }
   test.dependsOn('checkstyleMain', 'checkstyleTest')
 
-  if (!JavaVersion.current().isJava9Compatible()) {
-    findbugs {
-      toolVersion = "3.0.1"
-      excludeFilter = file("$rootDir/gradle/findbugs-exclude.xml")
-      ignoreFailures = false
-    }
-    test.dependsOn('findbugsMain')
-
-    tasks.withType(FindBugs) {
-      reports {
-        xml.enabled(project.hasProperty('xmlFindBugsReport'))
-        html.enabled(!project.hasProperty('xmlFindBugsReport'))
-      }
-    }
-  }
 
   // Ignore core since its a scala project
   if (it.path != ':core') {
@@ -403,15 +362,7 @@ subprojects {
     }
   }
 
-  def coverageGen = it.path == ':core' ? 'reportScoverage' : 'jacocoTestReport'
-  task reportCoverage(dependsOn: [coverageGen])
 
-}
-
-gradle.taskGraph.whenReady { taskGraph ->
-  taskGraph.getAllTasks().findAll { it.name.contains('findbugsScoverage') || it.name.contains('findbugsTest') }.each { task ->
-    task.enabled = false
-  }
 }
 
 def fineTuneEclipseClasspathFile(eclipse, project) {
@@ -545,7 +496,6 @@ project(':core') {
   println "Building project 'core' with Scala version ${versions.scala}"
 
   apply plugin: 'scala'
-  apply plugin: "org.scoverage"
   archivesBaseName = "kafka_${versions.baseScala}"
 
   dependencies {
@@ -588,18 +538,8 @@ project(':core') {
     testCompile libs.slf4jlog4j
     testCompile libs.jfreechart
 
-    scoverage libs.scoveragePlugin
-    scoverage libs.scoverageRuntime
   }
   
-  scoverage {
-    reportDir = file("${rootProject.buildDir}/scoverage")
-    highlighting = false
-  }
-  checkScoverage {
-    minimumRate = 0.0
-  }
-  checkScoverage.shouldRunAfter('test')
 
   configurations {
     // manually excludes some unnecessary dependencies
